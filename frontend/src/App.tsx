@@ -1,83 +1,102 @@
-import { useState } from "react";
-import type { FormEvent } from "react";
+import SmoothScroll from "./components/smoothscroll";
+import { useEffect, useState } from "react";
+import type { ReactNode } from "react";
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+} from "react-router-dom";
+import type { Session } from "@supabase/supabase-js";
+
 import { supabase } from "./lib/supabase";
-import "./App.css";
+import Landing from "./pages/landing";
+import Login from "./pages/login";
+import Signup from "./pages/signup";
+import Dashboard from "./pages/Dashboard";
 
-export default function App() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [message, setMessage] = useState("");
+interface ProtectedRouteProps {
+  session: Session | null;
+  loading: boolean;
+  children: ReactNode;
+}
 
-  async function signIn(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setMessage("Signing in...");
-
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (error) {
-      setMessage(error.message);
-      return;
-    }
-
-    if (!data.session) {
-      setMessage("Login succeeded, but no session was returned.");
-      return;
-    }
-
-    try {
-      const response = await fetch("http://127.0.0.1:8000/me", {
-        headers: {
-          Authorization: `Bearer ${data.session.access_token}`,
-        },
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        setMessage(`Backend error: ${result.detail ?? response.status}`);
-        return;
-      }
-
-      setMessage(`Backend connected! User ID: ${result.user_id}`);
-    } catch {
-      setMessage("Could not connect to FastAPI. Check that the backend is running.");
-    }
+function ProtectedRoute({
+  session,
+  loading,
+  children,
+}: ProtectedRouteProps) {
+  if (loading) {
+    return <p>Checking your session...</p>;
   }
 
+  if (!session) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return children;
+}
+
+function App() {
+  const [session, setSession] = useState<Session | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+
+    // Restore the existing session after a page refresh.
+    supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        if (mounted) {
+          setSession(data.session);
+          setLoading(false);
+        }
+      })
+      .catch(() => {
+        if (mounted) {
+          setSession(null);
+          setLoading(false);
+        }
+      });
+
+    // Listen for login, logout and session changes.
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      setSession(newSession);
+      setLoading(false);
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
   return (
-    <main className="login-page">
-      <section className="login-card">
-        <h1>DevConnect Login Test</h1>
+    <BrowserRouter>
+      <SmoothScroll />
+      <Routes>
+        <Route path="/" element={<Landing />} />
 
-        <form onSubmit={signIn}>
-          <div className="login-form-fields">
-            <input
-              type="email"
-              placeholder="Email address"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              required
-              autoComplete="email"
-            />
+        <Route path="/login" element={<Login />} />
 
-            <input
-              type="password"
-              placeholder="Password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              required
-              autoComplete="current-password"
-            />
+        <Route path="/signup" element={<Signup />} />
 
-            <button type="submit">Sign in</button>
-          </div>
-        </form>
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedRoute session={session} loading={loading}>
+              <Dashboard userEmail={session?.user.email ?? ""} />
+            </ProtectedRoute>
+          }
+        />
 
-        <p role="status" aria-live="polite">{message}</p>
-      </section>
-    </main>
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </BrowserRouter>
   );
 }
+
+export default App;

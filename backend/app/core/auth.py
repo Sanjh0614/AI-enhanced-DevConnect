@@ -12,10 +12,12 @@ from pathlib import Path
 
 class Settings(BaseSettings):
     supabase_url: str
+    database_url: str
 
     model_config = {
         "env_file": Path(__file__).resolve().parents[2] / ".env",
         "env_file_encoding": "utf-8",
+        "extra": "ignore",
     }
 
 
