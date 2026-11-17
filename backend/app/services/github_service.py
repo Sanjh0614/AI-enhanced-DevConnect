@@ -1,6 +1,8 @@
 
+import base64
 import httpx
 from fastapi import HTTPException
+
 
 GITHUB_API_BASE = "https://api.github.com"
 
@@ -77,6 +79,56 @@ async def fetch_user_repositories(username: str) -> list[dict]:
         raise HTTPException(
             status_code=502,
             detail="GitHub API returned an unexpected error.",
+        )
+    except httpx.RequestError:
+        raise HTTPException(
+            status_code=502,
+            detail="Could not connect to GitHub API.",
+        )
+
+
+async def fetch_repository_readme(full_name: str) -> str | None:
+    url = f"{GITHUB_API_BASE}/repos/{full_name}/readme"
+
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.get(url, headers=headers)
+
+        if response.status_code == 404:
+            return None
+
+        if response.status_code in (403, 429):
+            raise HTTPException(
+                status_code=503,
+                detail="GitHub API rate limit reached.",
+            )
+
+        response.raise_for_status()
+
+        data = response.json()
+        encoded_content = data.get("content", "")
+
+        return base64.b64decode(encoded_content).decode(
+            "utf-8",
+            errors="replace",
+        )
+
+    except HTTPException:
+        raise
+    except httpx.TimeoutException:
+        raise HTTPException(
+            status_code=504,
+            detail="GitHub README request timed out.",
+        )
+    except httpx.HTTPStatusError:
+        raise HTTPException(
+            status_code=502,
+            detail="Could not fetch repository README.",
         )
     except httpx.RequestError:
         raise HTTPException(

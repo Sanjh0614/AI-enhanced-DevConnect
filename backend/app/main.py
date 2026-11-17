@@ -8,6 +8,8 @@ from sqlalchemy.orm import Session
 from fastapi import Depends, HTTPException
 from app.database import SessionLocal
 from app.services.repository_service import save_repositories
+from app.services.github_service import fetch_repository_readme
+from app.services.repository_service import update_repository_readme
 
 app = FastAPI(
     title="AI-Enhanced DevConnect API",
@@ -62,6 +64,7 @@ def get_db():
     finally:
         db.close()
 
+
 @app.post("/github/sync")
 async def sync_github_repositories(
     user: dict = Depends(get_current_user),
@@ -69,7 +72,6 @@ async def sync_github_repositories(
 ):
     profile_id = user["user_id"]
 
-    # Fetch the GitHub username stored for this authenticated profile.
     result = db.execute(
         text("""
             SELECT github_username
@@ -95,7 +97,24 @@ async def sync_github_repositories(
         repositories,
     )
 
+    readme_count = 0
+
+    for repo in repositories:
+        readme_content = await fetch_repository_readme(
+            repo["full_name"]
+        )
+
+        if readme_content is not None:
+            update_repository_readme(
+                db,
+                profile_id,
+                repo["github_repo_id"],
+                readme_content,
+            )
+            readme_count += 1
+
     return {
-        "message": "Repositories synced successfully",
-        "count": saved_count,
+        "message": "Repositories and READMEs synced successfully",
+        "repositories_synced": saved_count,
+        "readmes_synced": readme_count,
     }

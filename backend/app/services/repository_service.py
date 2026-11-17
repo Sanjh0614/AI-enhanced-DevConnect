@@ -63,3 +63,30 @@ def save_repositories(
     except Exception:
         db.rollback()
         raise
+
+
+def update_repository_readme(
+    db: Session,
+    profile_id: str,
+    github_repo_id: int,
+    readme_content: str | None,
+) -> None:
+    try:
+        db.execute(
+            text("""
+                UPDATE public.repositories
+                SET readme_content = :readme_content
+                WHERE github_repo_id = :github_repo_id
+                AND profile_id = CAST(:profile_id AS uuid)
+            """),
+            {
+                "readme_content": readme_content,
+                "github_repo_id": github_repo_id,
+                "profile_id": profile_id,
+            },
+        )
+        db.commit()
+
+    except Exception:
+        db.rollback()
+        raise

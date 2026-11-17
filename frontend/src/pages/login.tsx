@@ -45,6 +45,7 @@ export default function Login() {
                 setMessage("Login succeeded, but no session was returned.");
                 return;
             }
+            console.log("ACCESS TOKEN:", data.session.access_token);
 
             const response = await fetch(
                 `${import.meta.env.VITE_API_BASE_URL}/me`,
